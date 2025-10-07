@@ -177,6 +177,23 @@ services:
     entrypoint: ["sleep", "infinity"]
     networks:
       - default
+      
+  ingest-worker:
+    build:
+      context: ./ingest-worker 
+      dockerfile: Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME}-ingest-worker
+    depends_on:
+      - spark-thrift
+      - minio-setup
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+      - S3_BUCKET=${S3_BUCKET}
+    volumes:
+      - ./ingest-worker:/app
+    networks:
+      - default
 
 networks:
   default:
