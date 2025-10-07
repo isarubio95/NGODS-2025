@@ -1,0 +1,16 @@
+# Núcleo dbt
+dbt-core==1.9.2
+
+# Adaptadores (misma minor 1.9.x)
+dbt-trino==1.9.3
+dbt-spark==1.9.3
+# dbt-postgres==1.9.2  # si lo necesitas
+
+# Utilidades (opcionales)
+pyspark==3.3.2
+pandas==1.5.3
+prettytable==3.3.0
+requests==2.31.0
+yfinance==0.2.54
+kaggle==1.6.17
+markupsafe==2.1.5

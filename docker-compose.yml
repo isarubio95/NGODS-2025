@@ -1,0 +1,188 @@
+services:
+  mariadb:
+    image: mariadb:10.11
+    container_name: ${COMPOSE_PROJECT_NAME}-mariadb
+    environment:
+      - MARIADB_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mariadb-data:/var/lib/mysql
+      - ./init/mariadb:/docker-entrypoint-initdb.d:ro
+    networks:
+      - default
+
+  metastore:
+    image: sslhep/hive-metastore:3.1.3
+    container_name: ${COMPOSE_PROJECT_NAME}-metastore
+    depends_on:
+      mariadb:
+        condition: service_started
+    environment:
+      HIVE_CONF_DIR: /opt/hive/conf
+      HIVE_AUX_JARS_PATH: /opt/hive/auxlib
+      HIVE_METASTORE_AUX_JARS_PATH: /opt/hive/auxlib
+      CLASSPATH: /opt/hive/auxlib/*:/opt/hadoop/share/hadoop/common/lib/*
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      AWS_REGION: us-east-1
+      AWS_EC2_METADATA_DISABLED: "true"
+    entrypoint: ["/bin/bash","-lc",
+      "set -euo pipefail;
+       echo 'Usando HIVE_CONF_DIR='${HIVE_CONF_DIR:-};
+       ls -l /opt/hive/conf/ || true;
+       echo 'Contenido auxlib:'; ls -l /opt/hive/auxlib/ || true;
+       echo 'Inicializando/actualizando esquema en MySQL...';
+       /opt/hive/bin/schematool -dbType mysql -initSchema --verbose \
+         || /opt/hive/bin/schematool -dbType mysql -upgradeSchema --verbose;
+       echo 'Lanzando Hive Metastore en :9083...';
+       exec /opt/hive/bin/hive --service metastore -p 9083"
+    ]
+    ports:
+      - "9083:9083"
+    volumes:
+      - ./conf/spark/core-site.xml:/opt/hive/conf/core-site.xml:ro
+      - ./conf/spark/hive-site.xml:/opt/hive/conf/hive-site.xml:ro
+      - ./conf/metastore/auxlib:/opt/hive/auxlib:ro
+    networks:
+      - default
+
+  minio:
+    image: minio/minio:latest
+    container_name: ${COMPOSE_PROJECT_NAME}-minio
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - default
+
+  minio-setup:
+    image: minio/mc:latest
+    container_name: ${COMPOSE_PROJECT_NAME}-minio-setup
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: ["/bin/sh", "/init/init.sh"]
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+      - S3_BUCKET=${S3_BUCKET}
+    volumes:
+      - ./init/minio:/init:ro
+    networks:
+      - default
+
+  spark-thrift:
+    image: trivadis/apache-spark-thriftserver:3.3.2-hadoop3.3
+    container_name: ${COMPOSE_PROJECT_NAME}-spark-thrift
+    depends_on:
+      metastore:
+        condition: service_started
+      minio-setup:
+        condition: service_completed_successfully
+    environment:
+      HADOOP_CONF_DIR: /opt/spark/conf
+      SPARK_PRINT_LAUNCH_COMMAND: "1"
+    entrypoint:
+      - /bin/bash
+      - -lc
+      - |
+        set -euo pipefail
+        echo 'Resolviendo ruta de spark-submit...'
+        CANDS=("$${SPARK_HOME:-}/bin/spark-submit" "/opt/spark/bin/spark-submit" "/usr/local/spark/bin/spark-submit" "/spark/bin/spark-submit")
+        SPARK_SUBMIT=''
+        for c in "$${CANDS[@]}"; do
+          if [ -x "$$c" ]; then SPARK_SUBMIT="$$c"; break; fi
+        done
+        if [ -z "$$SPARK_SUBMIT" ]; then
+          echo 'ERROR: no se encontró spark-submit'; printf '%s\n' "$${CANDS[@]}"; exit 1
+        fi
+
+        # Autodetectar JAVA_HOME si no viene
+        if [ -z "$${JAVA_HOME:-}" ] && command -v java >/dev/null 2>&1; then
+          JB="$$(command -v java)"; export JAVA_HOME="$$(dirname "$$(dirname "$$(readlink -f "$$JB")")")"
+        fi
+        echo "JAVA_HOME=$${JAVA_HOME:-<no-definido>}"
+        java -version || true
+
+        # Asegurar directorios de logs/eventos
+        mkdir -p /tmp/spark-events || true
+        mkdir -p /var/log/spark/logs || true
+
+        echo "Usando spark-submit: $$SPARK_SUBMIT"
+        echo 'Lanzando Spark ThriftServer via spark-submit...'
+        exec "$$SPARK_SUBMIT" \
+          --class org.apache.spark.sql.hive.thriftserver.HiveThriftServer2 \
+          --master local[*] \
+          --deploy-mode client \
+          --conf spark.sql.catalogImplementation=hive \
+          --conf spark.sql.warehouse.dir=s3a://ngods/warehouse \
+          --conf spark.hadoop.hive.metastore.uris=thrift://metastore:9083 \
+          --conf spark.hadoop.fs.defaultFS=file:/// \
+          --conf spark.hadoop.fs.s3a.endpoint=http://minio:9000 \
+          --conf spark.hadoop.fs.s3a.path.style.access=true \
+          --conf spark.hadoop.fs.s3a.access.key=${MINIO_ROOT_USER} \
+          --conf spark.hadoop.fs.s3a.secret.key=${MINIO_ROOT_PASSWORD} \
+          --conf spark.hadoop.fs.s3a.connection.ssl.enabled=false \
+          --conf spark.eventLog.enabled=true \
+          --conf spark.eventLog.dir=/tmp/spark-events
+    ports:
+      - "10000:10000"  # JDBC Thrift
+      - "4040:4040"    # UI de jobs (cuando haya tareas)
+    volumes:
+      - ./conf/spark/core-site.xml:/opt/spark/conf/core-site.xml:ro
+      - ./conf/spark/hive-site.xml:/opt/spark/conf/hive-site.xml:ro
+      - ./conf/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+    networks:
+      - default
+
+  trino:
+    image: trinodb/trino:${TRINO_VERSION}
+    container_name: ${COMPOSE_PROJECT_NAME}-trino
+    depends_on:
+      metastore:
+        condition: service_started
+      minio-setup:
+        condition: service_completed_successfully
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./conf/trino/catalog:/etc/trino/catalog:ro
+    networks:
+      - default
+
+  dbt-runner:
+    build:
+      context: .                          # <— raíz del proyecto
+      dockerfile: ./docker/dbt-runner/Dockerfile
+      args:
+        PYTHON_IMAGE: ${PYTHON_IMAGE}
+    container_name: ${COMPOSE_PROJECT_NAME}-dbt
+    depends_on:
+      trino:
+        condition: service_started
+      spark-thrift:
+        condition: service_started
+    volumes:
+      - ./dbt/profiles.yml:/root/.dbt/profiles.yml:ro
+      - ./requirements.txt:/opt/requirements.txt:ro
+      - ./:/work
+    working_dir: /work
+    entrypoint: ["sleep", "infinity"]
+    networks:
+      - default
+
+networks:
+  default:
+    name: ${NETWORK_NAME}
+    external: true
+
+volumes:
+  mariadb-data:
+  minio-data:
