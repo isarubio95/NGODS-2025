@@ -1,5 +1,3 @@
-# Ubicación: /ingest-worker/ingest_worker.py
-
 import os
 import time
 from minio import Minio
@@ -16,9 +14,6 @@ S3_BUCKET = os.environ.get("S3_BUCKET")
 APP_NAME = "IngestWorker"
 
 def main():
-    """
-    Función principal del worker de ingesta.
-    """
     print("Inicializando Ingest-Worker...")
 
     minio_client = Minio(
@@ -31,7 +26,6 @@ def main():
     # --- INICIO DEL CAMBIO ---
 
     # Añadir los paquetes necesarios para la conexión con S3 (MinIO)
-    # La versión debe ser compatible con la versión de Hadoop de Spark 3.3.2
     spark = SparkSession.builder \
         .appName(APP_NAME) \
         .master("local[*]") \

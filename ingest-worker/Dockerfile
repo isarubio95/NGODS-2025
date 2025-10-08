@@ -1,6 +1,4 @@
-# Ubicación: /ingest-worker/Dockerfile
-
-# CAMBIO: Usar la versión "bullseye" de la imagen, que es más estable
+# Versión "bullseye", de las más estables
 FROM python:3.9-slim-bullseye
 
 # Instalar la versión de Java correcta (OpenJDK 17) y procps
