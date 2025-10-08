@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Generate a batch of Excel files and upload them directly to MinIO (S3-compatible).
 Requires: pandas, openpyxl, boto3
