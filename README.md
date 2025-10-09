@@ -22,15 +22,19 @@ La plataforma se compone de los siguientes servicios orquestados a través de do
 docker network create ngodsnet
 
 2. Iniciar todos los servicios
+```powershell
 docker compose up -d
+```
 
 <h2>2. Generar y Subir Datos de Prueba</h2>
 El proyecto incluye un script para generar archivos Excel de prueba y subirlos directamente a MinIO para que el ingest-worker los procese.
 
 1. Activa el entorno virtual
+```powershell
 generador-datos\.venv\Scripts\Activate.ps1
+```
 
-2. Configura las variables de entorno para conectar con MinIO
+3. Configura las variables de entorno para conectar con MinIO
 ```powershell
 $env:MINIO_ENDPOINT="http://localhost:9000"
 $env:MINIO_ACCESS_KEY="minio"
@@ -40,7 +44,9 @@ $env:S3_PREFIX="ingest" # Carpeta que el ingest-worker está vigilando
 ```
 
 3. Ejecuta el script para generar 100 archivos con 50 filas cada uno
+```powershell
 python generador-datos/generate_and_upload_excel.py --num-files 100 --rows 50
+```
 
 Una vez que los archivos se suban a la carpeta ingest/ en MinIO, el servicio ingest-worker los detectará automáticamente y comenzará el proceso de ingesta hacia la capa Bronze del Data Lake.
 
@@ -61,5 +67,6 @@ El servicio ingest-worker detecta el archivo, añade un timestamp de ingesta y l
 Paso 3: Refinado y Compactación (Capa Silver)
 
 Un job de Spark (compaction_job_by_hour.py) lee los datos de la capa Bronze, añade una partición más granular por minuto, y los guarda en una nueva tabla, optimizada para consultas analíticas rápidas.
+
 
 
