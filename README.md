@@ -31,11 +31,13 @@ El proyecto incluye un script para generar archivos Excel de prueba y subirlos d
 generador-datos\.venv\Scripts\Activate.ps1
 
 2. Configura las variables de entorno para conectar con MinIO
+```powershell
 $env:MINIO_ENDPOINT="http://localhost:9000"
 $env:MINIO_ACCESS_KEY="minio"
 $env:MINIO_SECRET_KEY="MinioPass_2025!"
 $env:S3_BUCKET="ngods"
 $env:S3_PREFIX="ingest" # Carpeta que el ingest-worker está vigilando
+```
 
 3. Ejecuta el script para generar 100 archivos con 50 filas cada uno
 python generador-datos/generate_and_upload_excel.py --num-files 100 --rows 50
@@ -59,4 +61,5 @@ El servicio ingest-worker detecta el archivo, añade un timestamp de ingesta y l
 Paso 3: Refinado y Compactación (Capa Silver)
 
 Un job de Spark (compaction_job_by_hour.py) lee los datos de la capa Bronze, añade una partición más granular por minuto, y los guarda en una nueva tabla, optimizada para consultas analíticas rápidas.
+
 
