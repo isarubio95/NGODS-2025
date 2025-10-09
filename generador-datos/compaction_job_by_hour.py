@@ -1,11 +1,22 @@
 """
-Job de mantenimiento para compactar los datos de una HORA en un único archivo.
+Job de ETL para refinar datos de BRONZE a SILVER.
+Lee datos crudos de una tabla particionada por hora, los enriquece, 
+los re-particiona y los compacta por minuto en una nueva tabla refinada.
+
+Uso:
+spark-submit \
+  --packages org.apache.hadoop:hadoop-aws:3.3.2,com.amazonaws:aws-java-sdk-bundle:1.12.262 \
+  /work/generador-datos/refine_bronze_to_silver.py \
+  --tabla-origen eventos_crudos_por_hora \
+  --tabla-destino eventos_refinados_por_minuto \
+  --fecha 2025-10-09 \
+  --hora 7
 """
 
 import argparse
 from datetime import datetime
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, lit
+from pyspark.sql.functions import col, lit, minute
 
 # --- CONFIGURACIÓN ---
 MINIO_ENDPOINT = "http://minio:9000"
@@ -17,25 +28,17 @@ HIVE_METASTORE_URIS = "thrift://metastore:9083"
 DATABASE_NAME = "default"
 
 def main():
-    parser = argparse.ArgumentParser(description="Compacta una partición de hora de una tabla de Spark.")
-    parser.add_argument("--tabla", required=True, help="El nombre de la tabla a compactar.")
-    parser.add_argument("--fecha", required=True, help="La fecha de la partición en formato YYYY-MM-DD.")
-    parser.add_argument("--hora", required=True, type=int, help="La hora de la partición (0-23).")
-    args = parser.parse_args()
-
-    table_name = args.tabla
-    partition_date_str = args.fecha
-    hour_to_compact = args.hora
+    parser = argparse.ArgumentParser(description="Refina datos de una partición de HORA y los compacta por MINUTO en una nueva tabla.")
     
-    try:
-        partition_date = datetime.strptime(partition_date_str, "%Y-%m-%d")
-    except ValueError:
-        print("Error: El formato de la fecha debe ser YYYY-MM-DD.")
-        return
+    parser.add_argument("--tabla-origen", default="eventos_crudos_por_hora", help="Tabla BRONZE de origen con datos por hora.")
+    parser.add_argument("--tabla-destino", default="eventos_refinados_por_minuto", help="Tabla SILVER de destino a crear/sobrescribir con datos por minuto.") 
+    parser.add_argument("--fecha", required=True, help="La fecha a procesar en formato YYYY-MM-DD.")
+    parser.add_argument("--hora", required=True, type=int, help="La hora a procesar (0-23).")
+    args = parser.parse_args()
 
     # --- INICIALIZACIÓN DE SPARK ---
     spark = SparkSession.builder \
-        .appName(f"CompactionJobByHour-{table_name}-{partition_date_str}-{hour_to_compact}") \
+        .appName(f"RefineAndCompact-{args.tabla_origen}-{args.fecha}-{args.hora}") \
         .master("local[*]") \
         .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:3.3.2,com.amazonaws:aws-java-sdk-bundle:1.12.262") \
         .config("spark.hadoop.fs.s3a.endpoint", MINIO_ENDPOINT) \
@@ -49,49 +52,53 @@ def main():
         .enableHiveSupport() \
         .getOrCreate()
 
-    full_table_name = f"{DATABASE_NAME}.{table_name}"
-    year, month, day = partition_date.year, partition_date.month, partition_date.day
-
-    print(f"Iniciando compactación para la tabla '{full_table_name}', partición de HORA: {year}-{month:02d}-{day:02d} HORA {hour_to_compact:02d}")
+    year = int(args.fecha.split('-')[0])
+    month = int(args.fecha.split('-')[1])
+    day = int(args.fecha.split('-')[2])
+    hour_to_process = args.hora
+    
+    full_source_table = f"{DATABASE_NAME}.{args.tabla_origen}"
+    full_dest_table = f"{DATABASE_NAME}.{args.tabla_destino}"
 
     try:
-        partition_path = f"{WAREHOUSE_PATH}/{table_name}/year={year}/month={month}/day={day}/hour={hour_to_compact}"
+        # 1. Leer los datos de la tabla origen (BRONZE), filtrando por la hora
+        print(f"Leyendo datos de '{full_source_table}' para la hora {hour_to_process} del {args.fecha}...")
+        df = spark.read.table(full_source_table).where(
+            (col("year") == year) & (col("month") == month) & (col("day") == day) & (col("hour") == hour_to_process)
+        )
         
-        print(f"Leyendo archivos directamente desde: {partition_path}")
-        df = spark.read.parquet(partition_path)
-
-        df.cache()
-        num_files_before = df.rdd.getNumPartitions()
-
-        if num_files_before <= 1:
-            print(f"No se necesita compactación. La partición ya tiene {num_files_before} archivo(s).")
-            spark.stop()
+        # 2. CREAR la nueva columna de partición 'minute' a partir del timestamp
+        df_with_minute = df.withColumn("minute", minute(col("timestamp_ingesta")))
+        
+        # Contar filas para verificación
+        count = df_with_minute.count()
+        if count == 0:
+            print("No se encontraron datos en la tabla origen para la hora especificada. No se hará nada.")
             return
-        
-        print(f"La partición contiene aproximadamente {num_files_before} archivos pequeños. Procediendo a compactar...")
 
-        # ### CAMBIO FUNDAMENTAL: "Rehidratar" el DataFrame ###
-        # Volvemos a añadir las columnas de partición con los valores que ya conocemos.
-        df_with_partitions = df.withColumn("year", lit(year)) \
-                               .withColumn("month", lit(month)) \
-                               .withColumn("day", lit(day)) \
-                               .withColumn("hour", lit(hour_to_compact))
-        
-        # Agrupamos todo en una sola partición en memoria
-        df_compacted = df_with_partitions.repartition(1)
-        
-        # Ahora el DataFrame que escribimos SÍ tiene las columnas de partición
+        print(f"Datos leídos ({count} filas). Procediendo a reparticionar por minuto...")
+
+        # 3. Agrupar los datos en memoria por cada minuto. Cada grupo se convertirá en un archivo.
+        partition_cols = ["year", "month", "day", "hour", "minute"]
+        df_compacted = df_with_minute.repartition(*partition_cols)
+
+        # 4. Escribir en la tabla de destino (SILVER). 
+        #    ¡Esta operación CREARÁ la estructura de carpetas por minuto!
+        print(f"Escribiendo en la tabla de destino '{full_dest_table}'...")
         df_compacted.write \
             .mode("overwrite") \
-            .insertInto(full_table_name)
+            .partitionBy(*partition_cols) \
+            .format("parquet") \
+            .saveAsTable(full_dest_table)
             
-        print("¡Compactación completada con éxito!")
+        print("¡Proceso completado con éxito!")
 
     except Exception as e:
-        print(f"Error durante la compactación: {e}")
+        print(f"Error durante el proceso: {e}")
     finally:
         spark.stop()
 
 
 if __name__ == "__main__":
     main()
+

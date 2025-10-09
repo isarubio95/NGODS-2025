@@ -1,106 +1,96 @@
-"""
-Job de mantenimiento para compactar los datos de una HORA en archivos por MINUTO.
-Lee todos los archivos de una partición de hora, los agrupa por minuto y 
-reescribe un archivo compacto para cada minuto que contenga datos.
-
-Requiere: pyspark
-
-Uso (desde dentro de un contenedor con acceso a Spark, como el 'dbt-runner'):
-# Compactar la hora 15 del día 9 de octubre de 2025, creando un archivo por minuto
-spark-submit \
-  --packages org.apache.hadoop:hadoop-aws:3.3.2,com.amazonaws:aws-java-sdk-bundle:1.12.262 \
-  /work/generador-datos/compaction_hour_to_minutes.py \
-  --tabla eventos_en_tiempo_real \
-  --fecha 2025-10-09 \
-  --hora 15
-"""
-
-import argparse
-from datetime import datetime
+import os
+import time
+from minio import Minio
 from pyspark.sql import SparkSession
-# Se importan las funciones 'minute' y 'lit'
-from pyspark.sql.functions import col, lit, minute
+# Se importan las funciones de tiempo necesarias
+from pyspark.sql.functions import year, month, dayofmonth, hour
+import pandas as pd
 
 # --- CONFIGURACIÓN ---
-MINIO_ENDPOINT = "http://minio:9000"
-MINIO_ACCESS_KEY = "minio"
-MINIO_SECRET_KEY = "MinioPass_2025!"
-S3_BUCKET = "ngods"
-WAREHOUSE_PATH = f"s3a://{S3_BUCKET}/warehouse"
-HIVE_METASTORE_URIS = "thrift://metastore:9083"
-DATABASE_NAME = "default"
+MINIO_ENDPOINT = "minio:9000"
+MINIO_ACCESS_KEY = os.environ.get("MINIO_ROOT_USER")
+MINIO_SECRET_KEY = os.environ.get("MINIO_ROOT_PASSWORD")
+S3_BUCKET = os.environ.get("S3_BUCKET")
+
+APP_NAME = "IngestWorker"
 
 def main():
-    parser = argparse.ArgumentParser(description="Compacta los datos de una hora en archivos por minuto.")
-    parser.add_argument("--tabla", required=True, help="El nombre de la tabla a compactar.")
-    parser.add_argument("--fecha", required=True, help="La fecha de la partición en formato YYYY-MM-DD.")
-    parser.add_argument("--hora", required=True, type=int, help="La hora de la partición (0-23).")
-    args = parser.parse_args()
+    print("Inicializando Ingest-Worker...")
 
-    table_name = args.tabla
-    partition_date_str = args.fecha
-    hour_to_compact = args.hora
-    
-    try:
-        partition_date = datetime.strptime(partition_date_str, "%Y-%m-%d")
-    except ValueError:
-        print("Error: El formato de la fecha debe ser YYYY-MM-DD.")
-        return
+    minio_client = Minio(
+        MINIO_ENDPOINT,
+        access_key=MINIO_ACCESS_KEY,
+        secret_key=MINIO_SECRET_KEY,
+        secure=False
+    )
 
-    # --- INICIALIZACIÓN DE SPARK ---
     spark = SparkSession.builder \
-        .appName(f"CompactionHourToMinutes-{table_name}-{partition_date_str}-{hour_to_compact}") \
+        .appName(APP_NAME) \
         .master("local[*]") \
         .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:3.3.2,com.amazonaws:aws-java-sdk-bundle:1.12.262") \
-        .config("spark.hadoop.fs.s3a.endpoint", MINIO_ENDPOINT) \
+        .config("spark.hadoop.fs.s3a.endpoint", f"http://{MINIO_ENDPOINT}") \
         .config("spark.hadoop.fs.s3a.access.key", MINIO_ACCESS_KEY) \
         .config("spark.hadoop.fs.s3a.secret.key", MINIO_SECRET_KEY) \
         .config("spark.hadoop.fs.s3a.path.style.access", "true") \
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
-        .config("spark.sql.warehouse.dir", WAREHOUSE_PATH) \
-        .config("hive.metastore.uris", HIVE_METASTORE_URIS) \
-        .config("spark.sql.sources.partitionOverwriteMode", "dynamic") \
+        .config("spark.sql.warehouse.dir", f"s3a://{S3_BUCKET}/warehouse") \
+        .config("spark.sql.catalogImplementation", "hive") \
+        .config("hive.metastore.uris", "thrift://metastore:9083") \
         .enableHiveSupport() \
         .getOrCreate()
 
-    full_table_name = f"{DATABASE_NAME}.{table_name}"
-    year, month, day = partition_date.year, partition_date.month, partition_date.day
+    print("Ingest-Worker inicializado. Esperando ficheros...")
 
-    print(f"Iniciando compactación para la tabla '{full_table_name}', partición de HORA: {year}-{month:02d}-{day:02d} HORA {hour_to_compact:02d}")
+    while True:
+        try:
+            objects = minio_client.list_objects(S3_BUCKET, prefix="ingest/", recursive=True)
+            for obj in objects:
+                if obj.object_name.endswith(('.xlsx', '.xls')):
+                    start_time = time.time()
+                    print(f"Procesando fichero: {obj.object_name}")
 
-    try:
-        # 1. Leer TODOS los datos de la partición de HORA especificada.
-        partition_path = f"{WAREHOUSE_PATH}/{table_name}/year={year}/month={month}/day={day}/hour={hour_to_compact}"
-        
-        print(f"Leyendo archivos directamente desde: {partition_path}")
-        df = spark.read.parquet(partition_path)
+                    local_path = f"/tmp/{os.path.basename(obj.object_name)}"
+                    minio_client.fget_object(S3_BUCKET, obj.object_name, local_path)
 
-        # 2. "Rehidratar" el DataFrame, añadiendo TODAS las columnas de partición necesarias.
-        #    Esto incluye extraer el 'minute' del timestamp que sí está en los datos.
-        df_with_partitions = df.withColumn("year", lit(year)) \
-                               .withColumn("month", lit(month)) \
-                               .withColumn("day", lit(day)) \
-                               .withColumn("hour", lit(hour_to_compact)) \
-                               .withColumn("minute", minute(col("timestamp_ingesta")))
-        
-        # 3. Reorganizar los datos en memoria. Spark creará un grupo para cada minuto distinto que encuentre.
-        print("Agrupando los datos por minuto...")
-        partition_cols = ["year", "month", "day", "hour", "minute"]
-        df_repartitioned = df_with_partitions.repartition(*partition_cols)
+                    pd_df = pd.read_excel(local_path)
+                    
+                    # Se añade una columna con la fecha y hora de la ingesta
+                    pd_df['timestamp_ingesta'] = pd.to_datetime(time.time(), unit='s')
+                    
+                    spark_df = spark.createDataFrame(pd_df)
 
-        # 4. Sobrescribir las particiones de la hora con los nuevos archivos compactados
-        print("Escribiendo particiones de minuto compactadas...")
-        df_repartitioned.write \
-            .mode("overwrite") \
-            .insertInto(full_table_name)
-            
-        print("¡Compactación completada con éxito!")
+                    # Se añaden las columnas de partición
+                    spark_df_partitioned = spark_df.withColumn("year", year(spark_df.timestamp_ingesta)) \
+                                                   .withColumn("month", month(spark_df.timestamp_ingesta)) \
+                                                   .withColumn("day", dayofmonth(spark_df.timestamp_ingesta)) \
+                                                   .withColumn("hour", hour(spark_df.timestamp_ingesta))
 
-    except Exception as e:
-        print(f"Error durante la compactación: {e}")
-    finally:
-        spark.stop()
+                    # El nombre de la tabla donde se ingieren los datos crudos
+                    table_name = "eventos_crudos_por_hora"
+                    
+                    # Se especifica que se particionará solo hasta la hora
+                    partition_cols = ["year", "month", "day", "hour"]
 
+                    # Se agrupa en un solo Parquet y se escribe en la partición correcta
+                    spark_df_partitioned.coalesce(1).write \
+                        .mode("append") \
+                        .partitionBy(*partition_cols) \
+                        .saveAsTable(table_name)
+                    
+                    print(f"Fichero {obj.object_name} procesado y guardado en la tabla {table_name}")
+
+                    minio_client.remove_object(S3_BUCKET, obj.object_name)
+                    
+                    end_time = time.time()
+                    elapsed_time = end_time - start_time
+                    print(f"Tiempo de procesamiento: {elapsed_time:.2f} segundos")
+
+        except Exception as e:
+            print(f"Error procesando ficheros: {e}")
+
+        # Pausa antes de la siguiente iteración
+        print("--- Esperando 1 segundo para el siguiente lote ---")
+        time.sleep(1)
 
 if __name__ == "__main__":
     main()
