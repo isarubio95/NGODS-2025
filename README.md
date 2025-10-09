@@ -19,7 +19,9 @@ La plataforma se compone de los siguientes servicios orquestados a través de do
 
 <h2>1. Instalación</h2>
 1. Crear la red Docker
+```powershell
 docker network create ngodsnet
+```
 
 2. Iniciar todos los servicios
 ```powershell
@@ -34,7 +36,7 @@ El proyecto incluye un script para generar archivos Excel de prueba y subirlos d
 generador-datos\.venv\Scripts\Activate.ps1
 ```
 
-3. Configura las variables de entorno para conectar con MinIO
+2. Configura las variables de entorno para conectar con MinIO
 ```powershell
 $env:MINIO_ENDPOINT="http://localhost:9000"
 $env:MINIO_ACCESS_KEY="minio"
@@ -67,6 +69,7 @@ El servicio ingest-worker detecta el archivo, añade un timestamp de ingesta y l
 Paso 3: Refinado y Compactación (Capa Silver)
 
 Un job de Spark (compaction_job_by_hour.py) lee los datos de la capa Bronze, añade una partición más granular por minuto, y los guarda en una nueva tabla, optimizada para consultas analíticas rápidas.
+
 
 
 
