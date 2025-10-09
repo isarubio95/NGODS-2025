@@ -53,7 +53,7 @@ python generador-datos/generate_and_upload_excel.py --num-files 100 --rows 50
 Una vez que los archivos se suban a la carpeta ingest/ en MinIO, el servicio ingest-worker los detectará automáticamente y comenzará el proceso de ingesta hacia la capa Bronze del Data Lake.
 
 
-🌊 Flujo de Datos: De la Subida a Silver
+<h2>Flujo de Datos: De la Subida a Silver</h2>
 El viaje de un archivo desde que se sube hasta que está listo para el análisis es el siguiente:
 
 Subida -> (ingest-worker) -> BRONZE -> (compaction_job) -> SILVER
@@ -69,6 +69,7 @@ El servicio ingest-worker detecta el archivo, añade un timestamp de ingesta y l
 Paso 3: Refinado y Compactación (Capa Silver)
 
 Un job de Spark (compaction_job_by_hour.py) lee los datos de la capa Bronze, añade una partición más granular por minuto, y los guarda en una nueva tabla, optimizada para consultas analíticas rápidas.
+
 
 
 
