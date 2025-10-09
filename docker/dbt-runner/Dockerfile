@@ -6,11 +6,12 @@ FROM ${PYTHON_IMAGE}
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# Java 17 disponible en bookworm
+# ### CAMBIO: Se añade 'procps' a la lista de paquetes ###
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential curl ca-certificates gnupg \
       openjdk-17-jre-headless \
-    && rm -rf /var/lib/apt/lists/*
+      procps \
+      && rm -rf /var/lib/apt/lists/*
 
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 RUN test -d "$JAVA_HOME"

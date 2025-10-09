@@ -159,7 +159,7 @@ services:
 
   dbt-runner:
     build:
-      context: .                          # <— raíz del proyecto
+      context: .                          
       dockerfile: ./docker/dbt-runner/Dockerfile
       args:
         PYTHON_IMAGE: ${PYTHON_IMAGE}
