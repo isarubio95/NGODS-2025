@@ -1,0 +1,9 @@
+2025-10-10 11:02:25 +0000 - dagster - DEBUG - ingest_job - 58d140e8-a8f3-4163-a760-b234d9e305e7 - 1231 - LOGS_CAPTURED - Started capturing logs in process (pid: 1231).
+2025-10-10 11:02:25 +0000 - dagster - DEBUG - ingest_job - 58d140e8-a8f3-4163-a760-b234d9e305e7 - 1231 - download_from_minio - STEP_START - Started execution of step "download_from_minio".
+2025-10-10 11:02:25 +0000 - dagster - DEBUG - ingest_job - 58d140e8-a8f3-4163-a760-b234d9e305e7 - 1231 - download_from_minio - STEP_INPUT - Got input "key" of type "String". (Type check passed).
+2025-10-10 11:02:25 +0000 - dagster - INFO - ingest_job - 58d140e8-a8f3-4163-a760-b234d9e305e7 - download_from_minio - Descargado ingest/datos_centralizados.xlsx (269586 bytes)
+INFO:dagster.builtin:ingest_job - 58d140e8-a8f3-4163-a760-b234d9e305e7 - download_from_minio - Descargado ingest/datos_centralizados.xlsx (269586 bytes)
+2025-10-10 11:02:25 +0000 - dagster - DEBUG - ingest_job - 58d140e8-a8f3-4163-a760-b234d9e305e7 - 1231 - download_from_minio - STEP_OUTPUT - Yielded output "result" of type "bytes". (Type check passed).
+2025-10-10 11:02:25 +0000 - dagster - DEBUG - ingest_job - 58d140e8-a8f3-4163-a760-b234d9e305e7 - download_from_minio - Writing file at: /dagster_home/storage/58d140e8-a8f3-4163-a760-b234d9e305e7/download_from_minio/result using PickledObjectFilesystemIOManager...
+2025-10-10 11:02:25 +0000 - dagster - DEBUG - ingest_job - 58d140e8-a8f3-4163-a760-b234d9e305e7 - 1231 - download_from_minio - HANDLED_OUTPUT - Handled output "result" using IO manager "io_manager"
+2025-10-10 11:02:25 +0000 - dagster - DEBUG - ingest_job - 58d140e8-a8f3-4163-a760-b234d9e305e7 - 1231 - download_from_minio - STEP_SUCCESS - Finished execution of step "download_from_minio" in 490ms.

@@ -1,0 +1,12 @@
+2025-10-10 10:42:54 +0000 - dagster - DEBUG - ingest_job - a0f9e1fb-4882-404a-93d5-b76af1f6b977 - 1779 - LOGS_CAPTURED - Started capturing logs in process (pid: 1779).
+2025-10-10 10:42:54 +0000 - dagster - DEBUG - ingest_job - a0f9e1fb-4882-404a-93d5-b76af1f6b977 - 1779 - run_dbt_build - STEP_START - Started execution of step "run_dbt_build".
+INFO:trino.auth:keyring module not found. OAuth2 token will not be stored in keyring.
+INFO:trino.auth:keyring module not found. OAuth2 token will not be stored in keyring.
+2025-10-10 10:43:00 +0000 - dagster - INFO - ingest_job - a0f9e1fb-4882-404a-93d5-b76af1f6b977 - run_dbt_build - Running dbt command: `dbt build`.
+INFO:dagster.builtin:ingest_job - a0f9e1fb-4882-404a-93d5-b76af1f6b977 - run_dbt_build - Running dbt command: `dbt build`.
+2025-10-10 10:43:19 +0000 - dagster - INFO - ingest_job - a0f9e1fb-4882-404a-93d5-b76af1f6b977 - run_dbt_build - Finished dbt command: `dbt build`.
+INFO:dagster.builtin:ingest_job - a0f9e1fb-4882-404a-93d5-b76af1f6b977 - run_dbt_build - Finished dbt command: `dbt build`.
+2025-10-10 10:43:19 +0000 - dagster - DEBUG - ingest_job - a0f9e1fb-4882-404a-93d5-b76af1f6b977 - 1779 - run_dbt_build - STEP_OUTPUT - Yielded output "result" of type "String". (Type check passed).
+2025-10-10 10:43:19 +0000 - dagster - DEBUG - ingest_job - a0f9e1fb-4882-404a-93d5-b76af1f6b977 - run_dbt_build - Writing file at: /dagster_home/storage/a0f9e1fb-4882-404a-93d5-b76af1f6b977/run_dbt_build/result using PickledObjectFilesystemIOManager...
+2025-10-10 10:43:19 +0000 - dagster - DEBUG - ingest_job - a0f9e1fb-4882-404a-93d5-b76af1f6b977 - 1779 - run_dbt_build - HANDLED_OUTPUT - Handled output "result" using IO manager "io_manager"
+2025-10-10 10:43:19 +0000 - dagster - DEBUG - ingest_job - a0f9e1fb-4882-404a-93d5-b76af1f6b977 - 1779 - run_dbt_build - STEP_SUCCESS - Finished execution of step "run_dbt_build" in 24.96s.

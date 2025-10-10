@@ -1,0 +1,10 @@
+Running with dbt=1.9.2
+INFO:trino.auth:keyring module not found. OAuth2 token will not be stored in keyring.
+INFO:trino.auth:keyring module not found. OAuth2 token will not be stored in keyring.
+Registered adapter: trino=1.9.3
+Unable to do partial parsing because saved manifest not found. Starting full parse.
+[[33mWARNING[0m]: Configuration paths exist in your dbt_project.yml file which do not apply to any resources.
+There are 1 unused configuration paths:
+- models
+Found 455 macros
+Nothing to do. Try checking your model configs and model specification args

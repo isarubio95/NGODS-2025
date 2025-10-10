@@ -1,0 +1,9 @@
+2025-10-10 11:33:37 +0000 - dagster - DEBUG - ingest_job - 034e6960-8506-48bb-a184-31fee7efd00b - 554 - LOGS_CAPTURED - Started capturing logs in process (pid: 554).
+2025-10-10 11:33:37 +0000 - dagster - DEBUG - ingest_job - 034e6960-8506-48bb-a184-31fee7efd00b - 554 - download_from_minio - STEP_START - Started execution of step "download_from_minio".
+2025-10-10 11:33:37 +0000 - dagster - DEBUG - ingest_job - 034e6960-8506-48bb-a184-31fee7efd00b - 554 - download_from_minio - STEP_INPUT - Got input "key" of type "String". (Type check passed).
+2025-10-10 11:33:38 +0000 - dagster - INFO - ingest_job - 034e6960-8506-48bb-a184-31fee7efd00b - download_from_minio - Descargado ingest/datos_centralizados.xlsx (952032 bytes)
+INFO:dagster.builtin:ingest_job - 034e6960-8506-48bb-a184-31fee7efd00b - download_from_minio - Descargado ingest/datos_centralizados.xlsx (952032 bytes)
+2025-10-10 11:33:38 +0000 - dagster - DEBUG - ingest_job - 034e6960-8506-48bb-a184-31fee7efd00b - 554 - download_from_minio - STEP_OUTPUT - Yielded output "result" of type "bytes". (Type check passed).
+2025-10-10 11:33:38 +0000 - dagster - DEBUG - ingest_job - 034e6960-8506-48bb-a184-31fee7efd00b - download_from_minio - Writing file at: /dagster_home/storage/034e6960-8506-48bb-a184-31fee7efd00b/download_from_minio/result using PickledObjectFilesystemIOManager...
+2025-10-10 11:33:38 +0000 - dagster - DEBUG - ingest_job - 034e6960-8506-48bb-a184-31fee7efd00b - 554 - download_from_minio - HANDLED_OUTPUT - Handled output "result" using IO manager "io_manager"
+2025-10-10 11:33:38 +0000 - dagster - DEBUG - ingest_job - 034e6960-8506-48bb-a184-31fee7efd00b - 554 - download_from_minio - STEP_SUCCESS - Finished execution of step "download_from_minio" in 566ms.

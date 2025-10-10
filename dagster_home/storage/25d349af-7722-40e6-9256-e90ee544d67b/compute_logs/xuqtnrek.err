@@ -1,0 +1,10 @@
+2025-10-10 11:06:31 +0000 - dagster - DEBUG - ingest_job - 25d349af-7722-40e6-9256-e90ee544d67b - 5606 - LOGS_CAPTURED - Started capturing logs in process (pid: 5606).
+2025-10-10 11:06:31 +0000 - dagster - DEBUG - ingest_job - 25d349af-7722-40e6-9256-e90ee544d67b - 5606 - validate_is_excel - STEP_START - Started execution of step "validate_is_excel".
+2025-10-10 11:06:31 +0000 - dagster - DEBUG - ingest_job - 25d349af-7722-40e6-9256-e90ee544d67b - validate_is_excel - Loading file from: /dagster_home/storage/25d349af-7722-40e6-9256-e90ee544d67b/download_from_minio/result using PickledObjectFilesystemIOManager...
+2025-10-10 11:06:31 +0000 - dagster - DEBUG - ingest_job - 25d349af-7722-40e6-9256-e90ee544d67b - 5606 - validate_is_excel - LOADED_INPUT - Loaded input "payload" using input manager "io_manager", from output "result" of step "download_from_minio"
+2025-10-10 11:06:31 +0000 - dagster - DEBUG - ingest_job - 25d349af-7722-40e6-9256-e90ee544d67b - 5606 - validate_is_excel - STEP_INPUT - Got input "key" of type "String?". (Type check passed).
+2025-10-10 11:06:31 +0000 - dagster - DEBUG - ingest_job - 25d349af-7722-40e6-9256-e90ee544d67b - 5606 - validate_is_excel - STEP_INPUT - Got input "payload" of type "bytes". (Type check passed).
+2025-10-10 11:06:31 +0000 - dagster - DEBUG - ingest_job - 25d349af-7722-40e6-9256-e90ee544d67b - 5606 - validate_is_excel - STEP_OUTPUT - Yielded output "result" of type "String". (Type check passed).
+2025-10-10 11:06:31 +0000 - dagster - DEBUG - ingest_job - 25d349af-7722-40e6-9256-e90ee544d67b - validate_is_excel - Writing file at: /dagster_home/storage/25d349af-7722-40e6-9256-e90ee544d67b/validate_is_excel/result using PickledObjectFilesystemIOManager...
+2025-10-10 11:06:31 +0000 - dagster - DEBUG - ingest_job - 25d349af-7722-40e6-9256-e90ee544d67b - 5606 - validate_is_excel - HANDLED_OUTPUT - Handled output "result" using IO manager "io_manager"
+2025-10-10 11:06:31 +0000 - dagster - DEBUG - ingest_job - 25d349af-7722-40e6-9256-e90ee544d67b - 5606 - validate_is_excel - STEP_SUCCESS - Finished execution of step "validate_is_excel" in 241ms.

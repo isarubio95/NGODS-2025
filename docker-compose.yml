@@ -194,6 +194,70 @@ services:
       - ./ingest-worker:/app
     networks:
       - default
+  
+  dagster-webserver:
+    build:
+      context: .
+      dockerfile: ./docker/dagster/Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME}-dagster-webserver
+    command: ["dagster-webserver", "-h", "0.0.0.0", "-p", "3000", "-f", "/work/dagster_jobs/ingest.py"]
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./:/work
+      - ./dagster_home:/dagster_home       
+    environment:
+      - DAGSTER_HOME=/dagster_home
+      - DBT_PROFILES_DIR=/work/dbt
+      - DAGSTER_MYSQL_USERNAME=${DB_USER}
+      - DAGSTER_MYSQL_PASSWORD=${DB_PASSWORD}
+      - DAGSTER_MYSQL_DB=${DB_NAME}
+      - DAGSTER_MYSQL_HOST=${DB_HOST}
+      - DAGSTER_MYSQL_PORT=${DB_PORT}
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+      - S3_PREFIX=ingest/
+      - S3_BUCKET=${S3_BUCKET}
+      - S3_ENDPOINT=${S3_ENDPOINT}
+      - AWS_REGION=${AWS_REGION}
+    depends_on:
+      mariadb:
+        condition: service_started
+      minio-setup:
+        condition: service_completed_successfully
+    networks:
+      - default
+
+  dagster-daemon:
+    build:
+      context: .
+      dockerfile: ./docker/dagster/Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME}-dagster-daemon
+    command: ["dagster-daemon", "run", "-f", "/work/dagster_jobs/ingest.py"]
+    volumes:
+      - ./:/work
+      - ./dagster_home:/dagster_home      
+    environment:
+      - DAGSTER_HOME=/dagster_home
+      - DBT_PROFILES_DIR=/work/dbt
+      - DAGSTER_MYSQL_USERNAME=${DB_USER}
+      - DAGSTER_MYSQL_PASSWORD=${DB_PASSWORD}
+      - DAGSTER_MYSQL_DB=${DB_NAME}
+      - DAGSTER_MYSQL_HOST=${DB_HOST}
+      - DAGSTER_MYSQL_PORT=${DB_PORT}
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+      - S3_PREFIX=ingest/
+      - S3_BUCKET=${S3_BUCKET}
+      - S3_ENDPOINT=${S3_ENDPOINT}
+      - AWS_REGION=${AWS_REGION}
+    depends_on:
+      mariadb:
+        condition: service_started
+      minio-setup:
+        condition: service_completed_successfully
+    networks:
+      - default
 
 networks:
   default:
