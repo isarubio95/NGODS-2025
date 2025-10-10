@@ -1,0 +1,15 @@
+# Ignorar archivos temporales de VSCode
+.vscode/
+
+# Ignorar archivos de resultados de ejecución y manifiestos semánticos generados por dbt
+dagster_home/.*
+dagster_home/storage/
+dagster_home/schedules/
+dagster_home/history/
+dagster_home/logs/
+
+# Ignorar archivos compilados de Python
+dagster_jobs/_pycache_/
+
+# Ignorar archivos de resultados de ejecución y manifiestos semánticos generados por dbt
+dbt/target/
