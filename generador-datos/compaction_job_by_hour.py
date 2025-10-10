@@ -6,11 +6,11 @@ los re-particiona y los compacta por minuto en una nueva tabla refinada.
 Uso:
 spark-submit \
   --packages org.apache.hadoop:hadoop-aws:3.3.2,com.amazonaws:aws-java-sdk-bundle:1.12.262 \
-  /work/generador-datos/refine_bronze_to_silver.py \
+  /work/generador-datos/compaction_job_by_hour.py \
   --tabla-origen eventos_crudos_por_hora \
   --tabla-destino eventos_refinados_por_minuto \
   --fecha 2025-10-09 \
-  --hora 7
+  --hora 14
 """
 
 import argparse

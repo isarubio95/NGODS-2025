@@ -126,49 +126,66 @@ def add_table_columns(spark, df, table_name):
 
 
 def write_data(name, warehouse, df, spark):
-    logger.info(f"WRITE_DATA -------------------------------------> {name}")
-    new_table = False
-    # Creates database if not exists
-    spark.sql(f"CREATE DATABASE IF NOT EXISTS {warehouse}.{database}")
+    if name == "datos_prueba":
+        logger.info(f"Iniciando escritura para la tabla: {name}")
+        table_name = f"{warehouse}.{database}.`{name}`"
 
-    # Writes spark dataframe to datalake table
-    table_name = f"{warehouse}.{database}.`{name}`"
-    fields = []
+        # Se crea la base de datos si no existe
+        spark.sql(f"CREATE DATABASE IF NOT EXISTS {warehouse}.{database}")
 
-    add_table_columns(spark, df, table_name)
-    # Load existing data from the table
-    try:
-        existing_data = spark.table(table_name)
-        new_data = df.exceptAll(existing_data) #compares dataframes and only adds new_data
-        logger.info(f"PRIMER TRY -------------------------------------> {new_data}")
-        # Combine existing data with new data and remove duplicates
-        #combined_data = existing_data.union(df).dropDuplicates() --> en caso de querer borrar los duplicados
-        #new_data = existing_data.join(df, df.columns, 'left_anti')
-    except AnalysisException as e:
-        logger.info(f"PRIMER EXCEPT -------------------------------------> {e}")
-        print(e)
-        print("New table")
-        new_table = True
-        new_data=df
+        try:
+            df.write \
+            .mode("append") \
+            .saveAsTable(table_name)
+            
+            logger.info(f"Escritura completada exitosamente para {table_name}")
 
-    try:
-        logger.info(f"SEGUNDO TRY -------------------------------------> {new_table}")
-        logger.info(f"SEGUNDO TRY -------------------------------------> {new_data}")
-        logger.info(f"SEGUNDO TRY -------------------------------------> {table_name}")
+        except Exception as e:
+            logger.error(f"Error durante la escritura para la tabla {table_name}: {e}")
+    else:
+        logger.info(f"WRITE_DATA -------------------------------------> {name}")
+        new_table = False
+        # Creates database if not exists
+        spark.sql(f"CREATE DATABASE IF NOT EXISTS {warehouse}.{database}")
 
-        new_data.write.mode("append").saveAsTable(table_name)
-        logger.info(f"SEGUNDO TRY -------------------------------------> terminada la escritura")
-        if new_table:
-            #Changes table format-version to 2 so tables can be updated from Trino
-            query = f"ALTER TABLE {table_name} SET TBLPROPERTIES ('format-version' = '2');"
-            spark.sql(query)
-    except Exception as tm:
-        print("***************** Unknown Exception please check ************************")
-        print(tm)
-        logger.info(f"SEGUNDO EXCEPT -------------------------------------> {tm}")
-        if "too many data columns" in str(tm):
-            print("Error: Write aborted, make sure the CSV header is not numeric.")
-            logger.info(f"SEGUNDO EXCEPT -------------------------------------> {tmc}")
+        # Writes spark dataframe to datalake table
+        table_name = f"{warehouse}.{database}.`{name}`"
+        fields = []
+
+        add_table_columns(spark, df, table_name)
+        # Load existing data from the table
+        try:
+            existing_data = spark.table(table_name)
+            new_data = df.exceptAll(existing_data) #compares dataframes and only adds new_data
+            logger.info(f"PRIMER TRY -------------------------------------> {new_data}")
+            # Combine existing data with new data and remove duplicates
+            #combined_data = existing_data.union(df).dropDuplicates() --> en caso de querer borrar los duplicados
+            #new_data = existing_data.join(df, df.columns, 'left_anti')
+        except AnalysisException as e:
+            logger.info(f"PRIMER EXCEPT -------------------------------------> {e}")
+            print(e)
+            print("New table")
+            new_table = True
+            new_data=df
+
+        try:
+            logger.info(f"SEGUNDO TRY -------------------------------------> {new_table}")
+            logger.info(f"SEGUNDO TRY -------------------------------------> {new_data}")
+            logger.info(f"SEGUNDO TRY -------------------------------------> {table_name}")
+
+            new_data.write.mode("append").saveAsTable(table_name)
+            logger.info(f"SEGUNDO TRY -------------------------------------> terminada la escritura")
+            if new_table:
+                #Changes table format-version to 2 so tables can be updated from Trino
+                query = f"ALTER TABLE {table_name} SET TBLPROPERTIES ('format-version' = '2');"
+                spark.sql(query)
+        except Exception as tm:
+            print("***************** Unknown Exception please check ************************")
+            print(tm)
+            logger.info(f"SEGUNDO EXCEPT -------------------------------------> {tm}")
+            if "too many data columns" in str(tm):
+                print("Error: Write aborted, make sure the CSV header is not numeric.")
+                logger.info(f"SEGUNDO EXCEPT -------------------------------------> {tmc}")
 
 
 def create_table(warehouse,spark):
