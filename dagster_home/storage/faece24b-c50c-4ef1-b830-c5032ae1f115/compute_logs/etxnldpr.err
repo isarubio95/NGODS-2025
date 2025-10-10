@@ -1,6 +1,0 @@
-2025-10-10 10:40:24 +0000 - dagster - DEBUG - ingest_job - faece24b-c50c-4ef1-b830-c5032ae1f115 - 233 - LOGS_CAPTURED - Started capturing logs in process (pid: 233).
-2025-10-10 10:40:24 +0000 - dagster - DEBUG - ingest_job - faece24b-c50c-4ef1-b830-c5032ae1f115 - 233 - run_dbt_build - STEP_START - Started execution of step "run_dbt_build".
-INFO:trino.auth:keyring module not found. OAuth2 token will not be stored in keyring.
-INFO:trino.auth:keyring module not found. OAuth2 token will not be stored in keyring.
-2025-10-10 10:40:26 +0000 - dagster - INFO - ingest_job - faece24b-c50c-4ef1-b830-c5032ae1f115 - run_dbt_build - Running dbt command: `dbt build`.
-INFO:dagster.builtin:ingest_job - faece24b-c50c-4ef1-b830-c5032ae1f115 - run_dbt_build - Running dbt command: `dbt build`.
