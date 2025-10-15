@@ -151,8 +151,8 @@ def s3_new_objects_sensor_silver(context):
             run_key=lm_iso,
             run_config={
                 "ops": {
-                    "download_from_minio": {"inputs": {"key": {"value": key}}},
-                    "validate_is_excel":   {"inputs": {"key": {"value": key}}},
+                    "download_from_minio_silver": {"inputs": {"key": {"value": key}}},
+                    "validate_is_excel_silver":   {"inputs": {"key": {"value": key}}},
                 }
             },
             tags={"s3_key": key, "s3_last_modified": lm_iso},
