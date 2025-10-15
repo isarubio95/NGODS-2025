@@ -16,7 +16,7 @@ from dagster_dbt import DbtCliResource
 DBT_PROFILES_DIR = os.getenv("DBT_PROFILES_DIR", "/work/dbt")
 BUCKET        = os.getenv("S3_BUCKET", "ngods")
 INGEST_PREFIX = os.getenv("S3_PREFIX",  "ingest/")
-SILVER_PREFIX = os.getenv("SILVER_PREFIX", "silver/")
+BRONZE_PREFIX = os.getenv("BRONZE_PREFIX", "bronze/")
 TZ_EUROPE_MAD = ZoneInfo("Europe/Madrid")
 
 dbt = DbtCliResource(project_dir="/work/dbt", profiles_dir=DBT_PROFILES_DIR)
@@ -53,7 +53,7 @@ def _list_objects(prefix: str) -> Iterable[dict]:
 
 # ---------- Ops ----------
 @op
-def download_from_minio(key: str) -> bytes:
+def download_from_minio_bronze(key: str) -> bytes:
     s3 = make_s3()
     buf = BytesIO()
     s3.download_fileobj(Bucket=BUCKET, Key=key, Fileobj=buf)
@@ -62,7 +62,7 @@ def download_from_minio(key: str) -> bytes:
     return buf.getvalue()
 
 @op
-def validate_is_excel(payload: bytes, key: str) -> str:
+def validate_is_excel_bronze(payload: bytes, key: str) -> str:
     k = key.lower()
     if k.endswith(".xlsx"): return "xlsx"
     if k.endswith(".xls"):  return "xls"
@@ -70,7 +70,7 @@ def validate_is_excel(payload: bytes, key: str) -> str:
     raise Failure(f"El archivo {key} no es Excel (.xlsx/.xls)")
 
 @op
-def parse_excel_to_dataframe(payload: bytes, ext: str) -> pd.DataFrame:
+def parse_excel_to_dataframe_bronze(payload: bytes, ext: str) -> pd.DataFrame:
     # pandas elegirá el motor adecuado; usa openpyxl para xlsx si está instalado
     df = pd.read_excel(BytesIO(payload))
     df.columns = [str(c).strip() for c in df.columns]
@@ -78,41 +78,32 @@ def parse_excel_to_dataframe(payload: bytes, ext: str) -> pd.DataFrame:
     return df
 
 @op(ins={"key": In(default_value=None, description="S3 key fuente (opcional, se coge de tags si no se pasa)")})
-def upload_dataframe_as_parquet(context: OpExecutionContext, df: pd.DataFrame, key: str | None) -> str:
+def upload_dataframe_as_parquet_bronze(context: OpExecutionContext, df: pd.DataFrame, key: str | None) -> str:
+    """
+    Sube el DataFrame a una ÚNICA carpeta (BRONZE_PREFIX), sin columnas/paths de partición.
+    Si existe mismo nombre, se sobrescribe.
+    """
     key = key or context.run.tags.get("s3_key")
     lm_iso = context.run.tags.get("s3_last_modified")
-    ts_utc = datetime.fromisoformat(lm_iso) if lm_iso else datetime.now(timezone.utc)
-    parts = _local_parts(ts_utc)
-
-    df = df.copy()
-    df["year"], df["month"], df["day"], df["hour"], df["minute"] = (
-        parts["y"], int(parts["m"]), int(parts["d"]), int(parts["hh"]), int(parts["mm"])
-    )
-
+    # Para evitar colisiones puedes añadir un sufijo de timestamp al nombre si quieres.
+    # Ahora dejamos el nombre base del Excel.
     base = os.path.basename(key)
     stem = os.path.splitext(base)[0]
-    out_key = (
-        f"{SILVER_PREFIX.rstrip('/')}/"
-        f"year={parts['y']}/month={parts['m']}/day={parts['d']}/hour={parts['hh']}/minute={parts['mm']}/"
-        f"{stem}.parquet"
-    )
+    out_key = f"{BRONZE_PREFIX.rstrip('/')}/{stem}.parquet"
 
     import pyarrow as pa
     import pyarrow.parquet as pq
-    table = pa.Table.from_pandas(df)
     buf = BytesIO()
-    pq.write_table(table, buf, compression="snappy")
+    pq.write_table(pa.Table.from_pandas(df), buf, compression="snappy")
     buf.seek(0)
 
     s3 = make_s3()
     s3.put_object(Bucket=BUCKET, Key=out_key, Body=buf.getvalue())
-    get_dagster_logger().info(
-        f"Subido: s3://{BUCKET}/{out_key} (partición {parts['y']}-{parts['m']}-{parts['d']} {parts['hh']}:{parts['mm']} Europe/Madrid)"
-    )
+    get_dagster_logger().info(f"Subido: s3://{BUCKET}/{out_key}")
     return out_key
 
 @op
-def run_dbt_build() -> str:
+def run_dbt_build_bronze() -> str:
     res = dbt.cli(["build"])
     res.wait()
     return "dbt build OK"
@@ -120,17 +111,17 @@ def run_dbt_build() -> str:
 
 # ---------- Job ----------
 @job
-def ingest_job():
-    payload = download_from_minio()
-    ext     = validate_is_excel(payload)
-    df      = parse_excel_to_dataframe(payload, ext)
-    _out    = upload_dataframe_as_parquet(df)
-    run_dbt_build()
+def ingest_bronze_job():
+    payload = download_from_minio_bronze()
+    ext     = validate_is_excel_bronze(payload)
+    df      = parse_excel_to_dataframe_bronze(payload, ext)
+    _out    = upload_dataframe_as_parquet_bronze(df)
+    run_dbt_build_bronze()
 
 
 # ---------- Sensor ----------
-@sensor(job=ingest_job, minimum_interval_seconds=3)
-def s3_new_objects_sensor(context):
+@sensor(job=ingest_bronze_job, minimum_interval_seconds=3)
+def s3_new_objects_sensor_bronze(context):
     last_seen = context.cursor
     now_iso   = datetime.now(timezone.utc).isoformat()
 
@@ -151,19 +142,11 @@ def s3_new_objects_sensor(context):
             run_key=lm_iso,
             run_config={
                 "ops": {
-                    "download_from_minio": {"inputs": {"key": {"value": key}}},
-                    "validate_is_excel":   {"inputs": {"key": {"value": key}}},
+                    "download_from_minio_bronze": {"inputs": {"key": {"value": key}}},
+                    "validate_is_excel_bronze":   {"inputs": {"key": {"value": key}}},
                 }
             },
             tags={"s3_key": key, "s3_last_modified": lm_iso},
         )
 
     context.update_cursor(items[-1][1])
-
-
-# ---------- Definitions ----------
-defs = Definitions(
-    jobs=[ingest_job],
-    sensors=[s3_new_objects_sensor],
-    resources={"dbt": dbt},
-)

@@ -13,3 +13,6 @@ dagster_jobs/_pycache_/
 
 # Ignorar archivos de resultados de ejecución y manifiestos semánticos generados por dbt
 dbt/target/
+
+# Ignorar archivos compilados de Python
+__pycache__

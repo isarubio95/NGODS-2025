@@ -9,7 +9,7 @@ Usage (PowerShell):
   $env:MINIO_ACCESS_KEY="minio"
   $env:MINIO_SECRET_KEY="MinioPass_2025!"
   $env:S3_BUCKET="ngods"
-  $env:S3_KEY="ingest/datos_centralizados.xlsx" # The single file to manage
+  $env:S3_KEY="ingest/datos_centralizados.xlsx" 
 
   # Run with all defaults: adds 30 rows every 30 seconds
   python append_to_excel_loop.py
