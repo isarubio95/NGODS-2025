@@ -7,7 +7,7 @@ ngods:
       host: trino
       port: 8080
       user: dbt
-      catalog: hive
+      catalog: iceberg
       schema: default
       threads: 4
     spark:
