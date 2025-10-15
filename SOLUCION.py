@@ -284,13 +284,16 @@ def process_data():
                 if date_col not in df.columns:
                      df = df.withColumn(date_col, current_timestamp())
 
-                # Asegurar que la columna de fecha es del tipo correcto
-                df = df.withColumn(date_col, to_timestamp(col(date_col)))
+                # (ahora) year/month/day desde el momento de escritura (ingesta)
+                from pyspark.sql.functions import (
+                    year, month, dayofmonth, hour, minute,
+                    current_timestamp, to_timestamp, col
+                )
 
-                # Añadir columnas para la estructura de carpetas año/mes/día
-                df_with_partitions = df.withColumn("year", year(col(date_col))) \
-                                       .withColumn("month", month(col(date_col))) \
-                                       .withColumn("day", dayofmonth(col(date_col)))
+                ing_ts = current_timestamp()
+                df_with_partitions = df.withColumn("year",  year(ing_ts)) \
+                       .withColumn("month", month(ing_ts)) \
+                       .withColumn("day",  dayofmonth(ing_ts))
 
                 # Llamar a la función de escritura simplificada
                 write_data(file_name_no_ext, warehouse, df_with_partitions, spark)

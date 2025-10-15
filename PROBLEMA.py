@@ -13,6 +13,7 @@ from datetime import date
 import pandas as pd
 import re
 import time
+from pyspark.sql.functions import current_timestamp
 
 
 # Get Ip address
@@ -126,7 +127,8 @@ def add_table_columns(spark, df, table_name):
 
 
 def write_data(name, warehouse, df, spark):
-    if name == "datos_prueba":
+    if name == "cesar":
+        return
         logger.info(f"Iniciando escritura para la tabla: {name}")
         table_name = f"{warehouse}.{database}.`{name}`"
 
@@ -134,15 +136,14 @@ def write_data(name, warehouse, df, spark):
         spark.sql(f"CREATE DATABASE IF NOT EXISTS {warehouse}.{database}")
 
         try:
-            df.write \
-            .mode("append") \
-            .saveAsTable(table_name)
-            
+            # aquí las particiones y modificar ...
+            partition_cols = ["year", "month", "day", "hour", "minute"]
+            df.write.mode("append").partitionBy(partition_cols).saveAsTable(table_name)
             logger.info(f"Escritura completada exitosamente para {table_name}")
-
         except Exception as e:
             logger.error(f"Error durante la escritura para la tabla {table_name}: {e}")
     else:
+        # return
         logger.info(f"WRITE_DATA -------------------------------------> {name}")
         new_table = False
         # Creates database if not exists
@@ -298,7 +299,13 @@ def process_data():
                     df = df1.limit(df1.count())
 
                     file_name = key.rsplit("/", 1)[1].rsplit(".", 1)[0]
-                    write_data(file_name,warehouse, df, spark)
+                    # aquí meto la definición de particiones ...
+
+                    ing_ts = current_timestamp()
+                    df_with_partitions = df.withColumn("year",  year(ing_ts)).withColumn("month", month(ing_ts)).withColumn("day",  dayofmonth(ing_ts)) \
+                                           .withColumn("hour",  hour(ing_ts)).withColumn("minute",  minute(ing_ts))
+
+                    write_data(file_name, warehouse, df_with_partitions, spark)
                 #Move the S3 processed object to DataLake and inserts records to DB
                 move_file_to_raw_data(spark,warehouse,key)
                 os.remove(downloaded_file)
