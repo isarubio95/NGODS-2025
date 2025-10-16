@@ -7,7 +7,7 @@ from typing import Iterable
 import boto3
 import pandas as pd
 from dagster import (
-    Definitions, sensor, RunRequest, job, op, get_dagster_logger, OpExecutionContext, In
+    Definitions, sensor, RunRequest, job, op, get_dagster_logger, OpExecutionContext, In, Failure
 )
 from dagster_dbt import DbtCliResource
 
@@ -45,10 +45,19 @@ def _local_parts(ts_utc: datetime) -> dict:
 
 def _list_objects(prefix: str) -> Iterable[dict]:
     s3 = make_s3()
-    resp = s3.list_objects_v2(Bucket=BUCKET, Prefix=prefix)
-    for obj in resp.get("Contents", []):
-        if not obj["Key"].endswith("/"):
-            yield obj
+    token = None
+    while True:
+        kwargs = {"Bucket": BUCKET, "Prefix": prefix, "MaxKeys": 1000}
+        if token:
+            kwargs["ContinuationToken"] = token
+        resp = s3.list_objects_v2(**kwargs)
+        for obj in resp.get("Contents", []) if "Contents" in resp else []:
+            if not obj["Key"].endswith("/"):
+                yield obj
+        if not resp.get("IsTruncated"):
+            break
+        token = resp.get("NextContinuationToken")
+
 
 
 # ---------- Ops ----------
@@ -66,16 +75,27 @@ def validate_is_excel_silver(payload: bytes, key: str) -> str:
     k = key.lower()
     if k.endswith(".xlsx"): return "xlsx"
     if k.endswith(".xls"):  return "xls"
+    if k.endswith(".csv"):  return "csv"
     from dagster import Failure
-    raise Failure(f"El archivo {key} no es Excel (.xlsx/.xls)")
+    raise Failure(f"El archivo {key} no es Excel (.xlsx/.xls/.csv)")
 
 @op
 def parse_excel_to_dataframe_silver(payload: bytes, ext: str) -> pd.DataFrame:
-    # pandas elegirá el motor adecuado; usa openpyxl para xlsx si está instalado
-    df = pd.read_excel(BytesIO(payload))
+    buf = BytesIO(payload)
+
+    if ext == "csv":
+        df = pd.read_csv(buf, sep=None, engine="python", encoding="utf-8-sig")
+    elif ext == "xlsx":
+        df = pd.read_excel(buf, engine="openpyxl")
+    elif ext == "xls":
+        df = pd.read_excel(buf, engine="xlrd")
+    else:
+        raise Failure(f"Extensión no soportada: {ext}")
+
     df.columns = [str(c).strip() for c in df.columns]
-    get_dagster_logger().info(f"Excel leído: {len(df)} filas × {len(df.columns)} columnas")
+    get_dagster_logger().info(f"Leído {ext}: {len(df)} filas × {len(df.columns)} columnas")
     return df
+
 
 @op(ins={"key": In(default_value=None, description="S3 key fuente (opcional, se coge de tags si no se pasa)")})
 def upload_dataframe_as_parquet_silver(context: OpExecutionContext, df: pd.DataFrame, key: str | None) -> str:
@@ -91,10 +111,11 @@ def upload_dataframe_as_parquet_silver(context: OpExecutionContext, df: pd.DataF
 
     base = os.path.basename(key)
     stem = os.path.splitext(base)[0]
+    uid = f"{int(datetime.now(timezone.utc).timestamp())%100000:05d}"
     out_key = (
         f"{SILVER_PREFIX.rstrip('/')}/"
         f"year={parts['y']}/month={parts['m']}/day={parts['d']}/hour={parts['hh']}/minute={parts['mm']}/"
-        f"{stem}.parquet"
+        f"{stem}_{uid}.parquet"
     )
 
     import pyarrow as pa
@@ -148,7 +169,7 @@ def s3_new_objects_sensor_silver(context):
     items.sort(key=lambda x: x[1])
     for key, lm_iso in items:
         yield RunRequest(
-            run_key=lm_iso,
+            run_key = f"{lm_iso}|{key}",
             run_config={
                 "ops": {
                     "download_from_minio_silver": {"inputs": {"key": {"value": key}}},

@@ -66,8 +66,9 @@ def validate_is_excel_bronze(payload: bytes, key: str) -> str:
     k = key.lower()
     if k.endswith(".xlsx"): return "xlsx"
     if k.endswith(".xls"):  return "xls"
+    if k.endswith(".csv"):  return "csv"
     from dagster import Failure
-    raise Failure(f"El archivo {key} no es Excel (.xlsx/.xls)")
+    raise Failure(f"El archivo {key} no es Excel (.xlsx/.xls/.csv)")
 
 @op
 def parse_excel_to_dataframe_bronze(payload: bytes, ext: str) -> pd.DataFrame:
