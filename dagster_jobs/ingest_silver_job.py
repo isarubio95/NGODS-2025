@@ -7,10 +7,10 @@ from typing import Iterable
 import boto3
 import pandas as pd
 from dagster import (
-    Definitions, sensor, RunRequest, job, op, get_dagster_logger, OpExecutionContext, In, Failure
+    sensor, RunRequest, job, op, get_dagster_logger, OpExecutionContext, In, Failure
 )
 from dagster_dbt import DbtCliResource
-
+from pyspark.sql import SparkSession
 
 # ---------- Config ----------
 DBT_PROFILES_DIR = os.getenv("DBT_PROFILES_DIR", "/work/dbt")
@@ -40,7 +40,7 @@ def _local_parts(ts_utc: datetime) -> dict:
         "d":  f"{ts_local.day:02d}",
         "hh": f"{ts_local.hour:02d}",
         "mm": f"{ts_local.minute:02d}",
-        "ts": ts_local,  # por si se quiere loggear
+        "ts": ts_local,
     }
 
 def _list_objects(prefix: str) -> Iterable[dict]:
@@ -59,7 +59,6 @@ def _list_objects(prefix: str) -> Iterable[dict]:
         token = resp.get("NextContinuationToken")
 
 
-
 # ---------- Ops ----------
 @op
 def download_from_minio_silver(key: str) -> bytes:
@@ -67,7 +66,7 @@ def download_from_minio_silver(key: str) -> bytes:
     buf = BytesIO()
     s3.download_fileobj(Bucket=BUCKET, Key=key, Fileobj=buf)
     buf.seek(0)
-    get_dagster_logger().info(f"Descargado {key} ({buf.getbuffer().nbytes} bytes)")
+    get_dagster_logger().info(f"Downloaded {key} ({buf.getbuffer().nbytes} bytes)")
     return buf.getvalue()
 
 @op
@@ -76,13 +75,11 @@ def validate_is_excel_silver(payload: bytes, key: str) -> str:
     if k.endswith(".xlsx"): return "xlsx"
     if k.endswith(".xls"):  return "xls"
     if k.endswith(".csv"):  return "csv"
-    from dagster import Failure
-    raise Failure(f"El archivo {key} no es Excel (.xlsx/.xls/.csv)")
+    raise Failure(f"The file {key} is not an Excel file (.xlsx/.xls/.csv)")
 
 @op
 def parse_excel_to_dataframe_silver(payload: bytes, ext: str) -> pd.DataFrame:
     buf = BytesIO(payload)
-
     if ext == "csv":
         df = pd.read_csv(buf, sep=None, engine="python", encoding="utf-8-sig")
     elif ext == "xlsx":
@@ -90,14 +87,12 @@ def parse_excel_to_dataframe_silver(payload: bytes, ext: str) -> pd.DataFrame:
     elif ext == "xls":
         df = pd.read_excel(buf, engine="xlrd")
     else:
-        raise Failure(f"Extensión no soportada: {ext}")
-
+        raise Failure(f"Unsupported extension: {ext}")
     df.columns = [str(c).strip() for c in df.columns]
-    get_dagster_logger().info(f"Leído {ext}: {len(df)} filas × {len(df.columns)} columnas")
+    get_dagster_logger().info(f"Read {ext}: {len(df)} rows × {len(df.columns)} columns")
     return df
 
-
-@op(ins={"key": In(default_value=None, description="S3 key fuente (opcional, se coge de tags si no se pasa)")})
+@op(ins={"key": In(default_value=None, description="Source S3 key (optional, taken from tags if not provided)")})
 def upload_dataframe_as_parquet_silver(context: OpExecutionContext, df: pd.DataFrame, key: str | None) -> str:
     key = key or context.run.tags.get("s3_key")
     lm_iso = context.run.tags.get("s3_last_modified")
@@ -128,9 +123,80 @@ def upload_dataframe_as_parquet_silver(context: OpExecutionContext, df: pd.DataF
     s3 = make_s3()
     s3.put_object(Bucket=BUCKET, Key=out_key, Body=buf.getvalue())
     get_dagster_logger().info(
-        f"Subido: s3://{BUCKET}/{out_key} (partición {parts['y']}-{parts['m']}-{parts['d']} {parts['hh']}:{parts['mm']} Europe/Madrid)"
+        f"Uploaded: s3://{BUCKET}/{out_key} (partition {parts['y']}-{parts['m']}-{parts['d']} {parts['hh']}:{parts['mm']} Europe/Madrid)"
     )
     return out_key
+
+@op(ins={"parquet_key": In()})
+def register_metadata_in_spark(context: OpExecutionContext, parquet_key: str):
+    """
+    Crea una sesión de Spark y registra el fichero Parquet en el Hive Metastore
+    de forma robusta, evitando condiciones de carrera.
+    """
+    logger = get_dagster_logger()
+    original_key = context.run.tags.get("s_key", "unknown_source_file")
+    
+    table_name_raw = os.path.splitext(os.path.basename(original_key))[0]
+    table_name = "".join(c if c.isalnum() else '_' for c in table_name_raw).lower()
+    
+    db_name = "silver"
+    full_table_name = f"iceberg.{db_name}.{table_name}"
+    
+    logger.info(f"Iniciando sesión de Spark para registrar la tabla '{full_table_name}'...")
+
+    spark = (
+        SparkSession.builder.appName(f"Metadata-Ingest-{table_name}")
+        .master("local[*]")
+        .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
+        .config("spark.sql.catalog.iceberg", "org.apache.iceberg.spark.SparkCatalog")
+        .config("spark.sql.catalog.iceberg.type", "hive")
+        .config("spark.sql.catalog.iceberg.uri", "thrift://metastore:9083")
+        .config("spark.sql.warehouse.dir", f"s3a://{BUCKET}/warehouse")
+        .config("spark.hadoop.hive.metastore.uris", "thrift://metastore:9083")
+        .config("spark.hadoop.fs.s3a.endpoint", os.getenv("S3_ENDPOINT"))
+        .config("spark.hadoop.fs.s3a.access.key", os.getenv("MINIO_ROOT_USER"))
+        .config("spark.hadoop.fs.s3a.secret.key", os.getenv("MINIO_ROOT_PASSWORD"))
+        .config("spark.hadoop.fs.s3a.path.style.access", "true")
+        .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
+        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+        .enableHiveSupport()
+        .getOrCreate()
+    )
+    
+    logger.info("Sesión de Spark creada con éxito.")
+    
+    parquet_path = f"s3a://{BUCKET}/{parquet_key}"
+    
+    try:
+        logger.info(f"Asegurando que la base de datos '{db_name}' existe en el catálogo 'iceberg'...")
+        spark.sql(f"CREATE DATABASE IF NOT EXISTS iceberg.{db_name}")
+
+        logger.info(f"Leyendo datos desde {parquet_path}...")
+        df = spark.read.parquet(parquet_path)
+        df.createOrReplaceTempView("new_data_view")
+
+        # Obtenemos el esquema del DataFrame en formato DDL (ej: "col1 STRING, col2 INT")
+        schema_ddl = ", ".join([f"{field.name} {field.dataType.simpleString()}" for field in df.schema.fields])
+        
+        # 1. Crear la tabla de forma atómica si no existe (sin datos).
+        create_table_sql = f"CREATE TABLE IF NOT EXISTS {full_table_name} ({schema_ddl}) USING iceberg"
+        logger.info(f"Ejecutando DDL para asegurar la existencia de la tabla: {create_table_sql}")
+        spark.sql(create_table_sql)
+
+        # 2. Insertar los datos. Esta operación siempre es segura ahora
+        insert_sql = f"INSERT INTO {full_table_name} SELECT * FROM new_data_view"
+        logger.info(f"Ejecutando DML para insertar datos: {insert_sql}")
+        spark.sql(insert_sql)
+
+        count = spark.table(full_table_name).count()
+        logger.info(f"Metadatos actualizados para la tabla '{full_table_name}'. Filas totales ahora: {count}")
+        
+    except Exception as e:
+        logger.error(f"Error durante el registro de metadatos en Spark: {e}")
+        raise Failure(f"Fallo al registrar en Spark para la tabla {table_name}")
+    finally:
+        logger.info("Cerrando sesión de Spark.")
+        spark.stop()
 
 @op
 def run_dbt_build_silver() -> str:
@@ -142,10 +208,11 @@ def run_dbt_build_silver() -> str:
 # ---------- Job ----------
 @job
 def ingest_silver_job():
-    payload = download_from_minio_silver()
-    ext     = validate_is_excel_silver(payload)
-    df      = parse_excel_to_dataframe_silver(payload, ext)
-    _out    = upload_dataframe_as_parquet_silver(df)
+    payload    = download_from_minio_silver()
+    ext        = validate_is_excel_silver(payload)
+    df         = parse_excel_to_dataframe_silver(payload, ext)
+    parquet_key = upload_dataframe_as_parquet_silver(df)
+    register_metadata_in_spark(parquet_key)
     run_dbt_build_silver()
 
 
