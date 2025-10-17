@@ -16,3 +16,13 @@ dbt/target/
 
 # Ignorar archivos compilados de Python
 __pycache__
+
+# Ignorar archivos de la base de datos de Metastore de Apache Hive
+metastore_db/db*
+metastore_db/seg*/
+metastore_db/tmp*
+metastore_db/README*
+metastore_db/log/
+
+# Ignorar archivos de logs de Apache Derby
+derby.log
