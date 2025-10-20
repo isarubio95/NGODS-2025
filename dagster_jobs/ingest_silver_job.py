@@ -147,6 +147,7 @@ def register_metadata_in_spark(context: OpExecutionContext, parquet_key: str):
     spark = (
         SparkSession.builder.appName(f"Metadata-Ingest-{table_name}")
         .master("local[*]")
+        .config("spark.jars.packages", "org.apache.iceberg:iceberg-spark-runtime-3.3_2.12:1.4.3,org.apache.hadoop:hadoop-aws:3.3.2,com.amazonaws:aws-java-sdk-bundle:1.12.262")
         .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
         .config("spark.sql.catalog.iceberg", "org.apache.iceberg.spark.SparkCatalog")
         .config("spark.sql.catalog.iceberg.type", "hive")

@@ -154,6 +154,8 @@ services:
       - "8081:8080"
     volumes:
       - ./conf/trino/catalog:/etc/trino/catalog:ro
+      - ./conf/trino/config.properties:/etc/trino/config.properties:ro
+      - ./conf/trino/core-site.xml:/etc/trino/core-site.xml:ro
     env_file:
       - .env
     environment:
