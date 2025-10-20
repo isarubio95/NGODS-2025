@@ -26,3 +26,6 @@ metastore_db/log/
 
 # Ignorar archivos de logs de Apache Derby
 derby.log
+
+# Ignorar archivos de configuración de entorno
+.env
