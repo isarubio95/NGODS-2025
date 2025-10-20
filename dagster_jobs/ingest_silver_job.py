@@ -134,7 +134,7 @@ def register_metadata_in_spark(context: OpExecutionContext, parquet_key: str):
     de forma robusta, evitando condiciones de carrera.
     """
     logger = get_dagster_logger()
-    original_key = context.run.tags.get("s_key", "unknown_source_file")
+    original_key = context.run.tags.get("s3_key") or context.run.tags.get("s_key") or "unknown_source_file"
     
     table_name_raw = os.path.splitext(os.path.basename(original_key))[0]
     table_name = "".join(c if c.isalnum() else '_' for c in table_name_raw).lower()
