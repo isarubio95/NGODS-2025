@@ -151,8 +151,8 @@ DB_NAME=metastore_db
 DB_USER=hive
 DB_PASSWORD=hivepass
 
-MINIO_ROOT_USER=minio
-MINIO_ROOT_PASSWORD=MinioPass_2025!
+MINIO_ROOT_USER={user}
+MINIO_ROOT_PASSWORD={password}
 S3_BUCKET=ngods
 S3_ENDPOINT=http://minio:9000
 AWS_REGION=us-east-1
@@ -205,8 +205,8 @@ source generador-datos/.venv/bin/activate  # Windows: .venv\\Scripts\\activate
 pip install -r generador-datos/requirements.txt
 
 export MINIO_ENDPOINT="http://localhost:9000"
-export MINIO_ACCESS_KEY="minio"
-export MINIO_SECRET_KEY="MinioPass_2025!"
+export MINIO_ACCESS_KEY="tu_password"
+export MINIO_SECRET_KEY="tu_password"
 export S3_BUCKET="ngods"
 export S3_PREFIX="ingest"
 
@@ -278,5 +278,6 @@ El comando `dbt build` al final del job Dagster asegura que modelos, tests y sna
 - **2025-02-10:** Primera versión unificada del README con arquitectura completa NGODS 2025.
 
 ---
+
 
 > 💡 ¿Ideas, mejoras o nuevas integraciones? ¡Abre un issue o PR y llevemos este lakehouse aún más lejos!
