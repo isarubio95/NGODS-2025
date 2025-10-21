@@ -1,30 +1,20 @@
-<?xml version="1.0"?>
 <configuration>
-    <property>
-        <name>fs.s3a.impl</name>
-        <value>org.apache.hadoop.fs.s3a.S3AFileSystem</value>
-    </property>
+  <property><name>fs.s3a.endpoint</name><value>http://minio:9000</value></property>
+  <property><name>fs.s3a.path.style.access</name><value>true</value></property>
 
-    <property>
-        <name>fs.s3a.endpoint</name>
-        <value>http://minio:9000</value>
-    </property>
+  <property><name>fs.s3a.aws.credentials.provider</name>
+    <value>org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider</value>
+  </property>
+  <property><name>fs.s3a.access.key</name><value>minio</value></property>
+  <property><name>fs.s3a.secret.key</name><value>MinioPass_2025!</value></property>
+  <property><name>fs.s3a.connection.ssl.enabled</name><value>false</value></property>
+  <property><name>fs.s3a.endpoint.region</name><value>us-east-1</value></property>
 
-    <property>
-        <name>fs.s3a.access.key</name>
-        <value>${env.MINIO_ROOT_USER}</value>
-    </property>
-    <property>
-        <name>fs.s3a.secret.key</name>
-        <value>${env.MINIO_ROOT_PASSWORD}</value>
-    </property>
-
-    <property>
-        <name>fs.s3a.path.style.access</name>
-        <value>true</value>
-    </property>
-    <property>
-        <name>fs.s3a.connection.ssl.enabled</name>
-        <value>false</value>
-    </property>
+  <!-- Añade estas 2 (algunas builds las requieren) -->
+  <property><name>fs.s3a.impl</name>
+    <value>org.apache.hadoop.fs.s3a.S3AFileSystem</value>
+  </property>
+  <property><name>fs.AbstractFileSystem.s3a.impl</name>
+    <value>org.apache.hadoop.fs.s3a.S3A</value>
+  </property>
 </configuration>
